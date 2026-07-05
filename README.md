@@ -40,17 +40,6 @@ Try to reach a target size:
 python pdf.py input.pdf output.pdf --target-size-mb 2
 ```
 
-### How to upload to GitHub
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/USERNAME/REPOSITORY.git
-git push -u origin main
-```
-
-If you already created a repository on GitHub, replace the URL with your own.
 
 ---
 
