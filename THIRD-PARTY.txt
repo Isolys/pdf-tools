@@ -1,0 +1,22 @@
+PDF Tools third-party components
+
+Ghostscript 10.08.0 (Artifex Software): GNU AGPL v3.
+Unmodified executable and resources from the official Windows x64 release:
+https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/gs10080
+Corresponding source:
+https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz
+License text is included in _internal/licenses/ghostscript/COPYING (portable)
+and embedded under licenses/ghostscript/COPYING (single-file build).
+Ghostscript is invoked as a separate process.
+Keep the corresponding source archive and license notices with redistributions.
+
+Python 3.12: Python Software Foundation License (included in licenses/Python.txt).
+pypdf 6.14.2: BSD-3-Clause (included in licenses).
+Tcl/Tk: license files included with the PyInstaller Tcl/Tk runtime.
+PyInstaller 6.22.3: GPL with bootloader exception.
+https://pyinstaller.org/en/stable/license.html
+Microsoft runtime DLLs: Microsoft distributable runtime components.
+https://visualstudio.microsoft.com/license-terms/
+
+PDF Tools application and build source accompany this build in PDF-Tools-source.zip.
+This notice does not change the licensing of the original project.

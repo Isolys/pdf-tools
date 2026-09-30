@@ -1,97 +1,79 @@
-# PDF Tools / PDF Tools
+# PDF Tools
 
-## English
+Сжатие PDF с русским интерфейсом, выбором качества и желаемого размера.
 
-This repository contains small utilities for working with PDF files and text.
+## Готовая программа
 
-### Included scripts
-- pdf.py — compresses PDF files using Ghostscript (recommended) or a pypdf fallback.
-- comfyconfig.py — a small helper script that cleans text input and copies the result to the clipboard.
+### Самый простой вариант — установщик
 
-### Features
-- Compress PDF files with different quality presets.
-- Try target size compression.
-- Supports optional fallback mode with pypdf.
-- Works from the command line.
+Передайте файл `release/PDF-Tools-Setup.exe`. Достаточно запустить его двойным
+щелчком: установка начинается сама, без выбора папок и кнопок «Далее».
+Программа установится для текущего пользователя, создаст красный ярлык
+«Сжать PDF» на рабочем столе и в меню «Пуск», затем откроет выбор PDF.
+В дальнейшем нужно запускать этот ярлык. Установщик больше не нужен.
+Удаление — через «Установленные приложения» Windows, пункт «Сжать PDF».
+Установщик не подписан: Windows может отдельно показать предупреждение SmartScreen.
 
-### Requirements
-- Python 3.9+
-- Ghostscript (recommended for PDF compression)
-- Optional: pypdf
+Сборка предназначена для Windows 10/11 x64. Python и Ghostscript уже включены.
+Права администратора и интернет для работы не нужны. Windows 7/8, 32-битные
+системы и ARM64 не проверены и не заявлены как поддерживаемые.
 
-### Install dependencies
-```bash
-pip install pypdf
+- `release/PDF-Tools.exe` — программа одним файлом, запуск двойным щелчком.
+- `release/PDF-Tools-portable.zip` — распакуйте весь архив и запустите EXE внутри
+  папки. Не отделяйте его от `_internal`. Этот вариант не распаковывает зависимости
+  во временную папку при каждом запуске.
+
+Выберите PDF, уровень сжатия и место сохранения. Поле желаемого размера можно
+очистить. На EXE также можно перетащить один PDF. Исходник сохраняется; если
+сжатие увеличивает размер, в выбранное место записывается копия оригинала.
+Желаемый размер достижим не всегда. Сильное сжатие ухудшает изображения.
+Для подписанных PDF и интерактивных форм храните оригинал: перезапись Ghostscript
+может изменить эти свойства документа.
+
+Программа собрана без UPX и без запроса повышения прав. EXE не имеет цифровой
+подписи издателя. Гарантировать отсутствие предупреждений SmartScreen и всех
+антивирусов невозможно. Подпись доверенного издателя и репутация распространения
+оформляются отдельно. Отключать защиту Windows не рекомендуется.
+https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation
+
+## Исходники и командная строка
+
+Python 3.10+ и Ghostscript; для резервного режима нужен pypdf.
+
+```powershell
+py pdf.py
+py pdf.py input.pdf output.pdf -q ebook
+py pdf.py input.pdf output.pdf --target-size-mb 2
+py pdf.py input.pdf output.pdf --fallback-pypdf
 ```
 
-### Usage
-Compress a PDF:
-```bash
-python pdf.py input.pdf output.pdf
+CLI заменяет указанный выходной файл, интерфейс запрашивает подтверждение.
+Резервный режим сжимает потоки, сохраняет закладки и не поддерживает целевой размер.
+
+## Повторная сборка
+
+Использованы Python 3.12 x64, PyInstaller 6.22.3, pypdf 6.14.2, Ghostscript 10.08.0.
+
+1. Скачайте официальный gs10080w64.exe и SHA512SUMS:
+   https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/tag/gs10080
+   Проверьте контрольную сумму SHA512 установщика.
+2. Распакуйте установщик через 7-Zip в .build-deps/ghostscript без установки.
+   Там должны быть bin/gswin64c.exe, bin/gsdll64.dll, lib, Resource,
+   iccprofiles и doc/COPYING.
+3. Выполните:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.\.venv\Scripts\python.exe -m unittest -v test_pdf
+.\.venv\Scripts\python.exe build_windows.py
 ```
 
-Use a specific quality preset:
-```bash
-python pdf.py input.pdf output.pdf -q screen
-```
+Результаты и SHA256 находятся в release. Сборка не подписывает файлы и не меняет
+настройки антивируса. Сторонние компоненты перечислены в THIRD-PARTY.txt.
+При распространении сохраняйте лицензии и соответствующие исходники Ghostscript.
 
-Try to reach a target size:
-```bash
-python pdf.py input.pdf output.pdf --target-size-mb 2
-```
-
-
----
-
-## Русский
-
-В этом репозитории находятся небольшие утилиты для работы с PDF-файлами и текстом.
-
-### Что есть в проекте
-- pdf.py — сжимает PDF-файлы с помощью Ghostscript (рекомендуется) или через запасной вариант с pypdf.
-- comfyconfig.py — маленький помощник, который очищает текст и копирует результат в буфер обмена.
-
-### Возможности
-- Сжатие PDF с разными пресетами качества.
-- Попытка достичь нужного размера файла.
-- Поддержка запасного режима через pypdf.
-- Работа из командной строки.
-
-### Требования
-- Python 3.9+
-- Ghostscript (рекомендуется для сжатия PDF)
-- Опционально: pypdf
-
-### Установка зависимостей
-```bash
-pip install pypdf
-```
-
-### Использование
-Сжать PDF:
-```bash
-python pdf.py input.pdf output.pdf
-```
-
-Использовать конкретный пресет качества:
-```bash
-python pdf.py input.p```Поп```bashpyt```
-### Как загрузить на GitHub
-```b
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M git remote add origin https://github.com/USERNAME/REPOSITORY.git
-git push -u origin main
-```
-
-Попытаться достичь целевого размера:
-```bash
-python pdf.py input.pdf output.pdf --target-size-mb 2
-```
-
-Запустить помощник для текста:
-```bash
-python comfyconfig.py
-```
-
+Для сборки установщика распакуйте официальный ZIP NSIS 3.12 из
+https://nsis.sourceforge.io/Download в `.build-deps/nsis` (внутри `nsis-3.12`),
+затем выполните `.\.venv\Scripts\python.exe build_installer.py`.
+Установщик использует готовую папку `dist/portable/PDF-Tools`.

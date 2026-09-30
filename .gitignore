@@ -1,0 +1,8 @@
+__pycache__/
+.build-deps/
+build/
+dist/
+release/
+*.spec
+.venv/
+build-output.log

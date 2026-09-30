@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import queue
 import os
 import shutil
@@ -105,7 +106,7 @@ def find_ghostscript() -> str | None:
 def ghostscript_required_message() -> str:
     return (
         "Ghostscript не найден. Если вы запускаете готовую программу, "
-        "попросите прислать новую версию одним файлом. Если вы запускаете "
+        "распакуйте весь архив программы, включая папку _internal. Если вы запускаете "
         "скрипт, установите Ghostscript for Windows. Нужный файл: gswin64c.exe."
     )
 
@@ -152,6 +153,7 @@ def run_ghostscript(
         "-dNOPAUSE",
         "-dQUIET",
         "-dBATCH",
+        "-dSAFER",
         "-dDetectDuplicateImages=true",
         "-dCompressFonts=true",
         "-dSubsetFonts=true",
@@ -159,7 +161,14 @@ def run_ghostscript(
         f"-sOutputFile={str(output_pdf)}",
         str(input_pdf),
     ]
-    subprocess.run(command, check=True)
+    completed = subprocess.run(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        encoding="utf-8", errors="replace",
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
+    if completed.returncode:
+        details = completed.stdout.strip()[-4000:]
+        raise RuntimeError(f"Ghostscript не смог обработать PDF:\n{details}")
 
 
 def run_ghostscript_to_target(
@@ -171,10 +180,13 @@ def run_ghostscript_to_target(
     target_size_bytes: int,
     progress: ProgressCallback | None = None,
 ) -> str:
-    profiles = TARGET_PROFILES.get(quality) or [IMAGE_COMPRESSION.get(quality, {})]
+    profiles = TARGET_PROFILES.get(quality) or [
+        IMAGE_COMPRESSION.get(quality, {"dpi": 150, "jpeg_quality": 75})
+    ]
     best_pdf: Path | None = None
     best_size: int | None = None
     tried: list[str] = []
+    candidates: list[Path] = []
 
     try:
         for index, image in enumerate(profiles, start=1):
@@ -192,6 +204,7 @@ def run_ghostscript_to_target(
             )
             os.close(fd)
             candidate_pdf = Path(tmp_name)
+            candidates.append(candidate_pdf)
 
             run_ghostscript(
                 gs_path,
@@ -226,8 +239,6 @@ def run_ghostscript_to_target(
                 candidate_pdf.unlink()
 
             if candidate_size <= target_size_bytes:
-                if output_pdf.exists():
-                    output_pdf.unlink()
                 candidate_pdf.replace(output_pdf)
                 best_pdf = None
                 return (
@@ -238,8 +249,6 @@ def run_ghostscript_to_target(
         if best_pdf is None or best_size is None:
             raise RuntimeError("Ghostscript did not create a usable PDF")
 
-        if output_pdf.exists():
-            output_pdf.unlink()
         best_pdf.replace(output_pdf)
         best_pdf = None
         return (
@@ -247,8 +256,8 @@ def run_ghostscript_to_target(
             f"{human_size(best_size)}. Попытки: {'; '.join(tried)}"
         )
     finally:
-        if best_pdf and best_pdf.exists():
-            best_pdf.unlink()
+        for candidate in candidates:
+            candidate.unlink(missing_ok=True)
 
 
 def run_pypdf_fallback(input_pdf: Path, output_pdf: Path) -> None:
@@ -261,14 +270,9 @@ def run_pypdf_fallback(input_pdf: Path, output_pdf: Path) -> None:
         ) from exc
 
     reader = PdfReader(str(input_pdf), strict=False)
-    writer = PdfWriter()
-
-    for page in reader.pages:
-        writer_page = writer.add_page(page)
-        writer_page.compress_content_streams()
-
-    if reader.metadata:
-        writer.add_metadata(dict(reader.metadata))
+    writer = PdfWriter(clone_from=reader)
+    for page in writer.pages:
+        page.compress_content_streams()
 
     with output_pdf.open("wb") as file_obj:
         writer.write(file_obj)
@@ -286,12 +290,23 @@ def compress_pdf(
     input_pdf = input_pdf.resolve()
     output_pdf = output_pdf.resolve()
 
-    if not input_pdf.exists():
+    if not input_pdf.is_file():
         raise FileNotFoundError(f"Input file does not exist: {input_pdf}")
     if input_pdf.suffix.lower() != ".pdf":
         raise ValueError("Input file must be a .pdf file")
     if input_pdf == output_pdf:
         raise ValueError("Input and output paths must be different")
+    if output_pdf.exists() and input_pdf.samefile(output_pdf):
+        raise ValueError("Input and output refer to the same file")
+    if quality not in QUALITY_PRESETS:
+        raise ValueError("Unknown quality preset")
+    if compatibility not in ("1.4", "1.5", "1.6", "1.7", "2.0"):
+        raise ValueError("Unsupported PDF compatibility level")
+    if target_size_mb is not None:
+        if not math.isfinite(target_size_mb) or target_size_mb * 1024 * 1024 < 1:
+            raise ValueError("Размер должен быть конечным положительным числом (не меньше 1 байта)")
+        if force_fallback:
+            raise ValueError("Сжатие до заданного размера требует Ghostscript")
 
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
 
@@ -305,7 +320,7 @@ def compress_pdf(
 
     try:
         gs_path = None if force_fallback else find_ghostscript()
-        if gs_path and target_size_mb:
+        if gs_path and target_size_mb is not None:
             if progress:
                 progress("Начинаю сжатие до нужного размера", 0, None)
             target_size_bytes = int(target_size_mb * 1024 * 1024)
@@ -339,11 +354,9 @@ def compress_pdf(
         if tmp_size == 0:
             raise RuntimeError("Compressed file is empty")
 
-        if output_pdf.exists():
-            output_pdf.unlink()
-
         if tmp_size >= input_size:
-            shutil.copy2(input_pdf, output_pdf)
+            shutil.copy2(input_pdf, tmp_pdf)
+            tmp_pdf.replace(output_pdf)
             if progress:
                 progress("Готово: оставлен исходный файл", 1, 1)
             return f"{method}; kept original because compression did not reduce size"
@@ -378,6 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--compatibility",
+        choices=("1.4", "1.5", "1.6", "1.7", "2.0"),
         default="1.4",
         help="Output PDF compatibility level for Ghostscript, default: 1.4",
     )
@@ -404,7 +418,7 @@ def choose_gui_options() -> tuple[str, float | None] | None:
     root = tk.Tk()
     root.title("Сжать PDF")
     root.resizable(False, False)
-    root.geometry("390x250")
+    root.minsize(390, 250)
 
     label = tk.Label(root, text="Насколько сильно сжать PDF?", font=("Segoe UI", 12))
     label.pack(pady=(18, 10))
@@ -439,7 +453,7 @@ def choose_gui_options() -> tuple[str, float | None] | None:
             except ValueError:
                 messagebox.showerror("Сжать PDF", "Введите число, например 5")
                 return
-            if target <= 0:
+            if not math.isfinite(target) or target * 1024 * 1024 < 1:
                 messagebox.showerror("Сжать PDF", "Размер должен быть больше 0")
                 return
         choice["level"] = level
@@ -462,14 +476,14 @@ def choose_gui_options() -> tuple[str, float | None] | None:
     return str(choice["level"]), choice["target"] if isinstance(choice["target"], float) else None
 
 
-def run_gui() -> int:
+def run_gui(input_path: Path | None = None) -> int:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
 
     root = tk.Tk()
     root.withdraw()
 
-    input_name = filedialog.askopenfilename(
+    input_name = str(input_path) if input_path else filedialog.askopenfilename(
         title="Выберите PDF-файл",
         filetypes=(("PDF-файлы", "*.pdf"), ("Все файлы", "*.*")),
     )
@@ -488,13 +502,25 @@ def run_gui() -> int:
     output_pdf = input_pdf.with_name(
         f"{input_pdf.stem}_compressed_{level}{target_part}.pdf"
     )
+    save_root = tk.Tk()
+    save_root.withdraw()
+    output_name = filedialog.asksaveasfilename(
+        parent=save_root, title="Сохранить сжатый PDF",
+        initialdir=str(input_pdf.parent), initialfile=output_pdf.name,
+        defaultextension=".pdf", filetypes=(("PDF-файлы", "*.pdf"),),
+        confirmoverwrite=True,
+    )
+    save_root.destroy()
+    if not output_name:
+        return 0
+    output_pdf = Path(output_name)
     quality = GUI_LEVELS[level]
     before = input_pdf.stat().st_size if input_pdf.exists() else 0
 
     progress_root = tk.Tk()
     progress_root.title("Сжимаю PDF")
     progress_root.resizable(False, False)
-    progress_root.geometry("420x150")
+    progress_root.minsize(420, 150)
 
     status_var = tk.StringVar(value="Подготовка...")
     status_label = tk.Label(progress_root, textvariable=status_var, font=("Segoe UI", 10))
@@ -594,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not argv:
         return run_gui()
+    if len(argv) == 1 and not argv[0].startswith("-"):
+        return run_gui(Path(argv[0]))
 
     parser = build_parser()
     args = parser.parse_args(argv)
